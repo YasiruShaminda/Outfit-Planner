@@ -110,26 +110,76 @@ def analyze_clothing(image):
         st.error(f"Error analyzing clothing: {e}")
         return None
 
-# Function to generate outfits
-def generate_outfits(profile, wardrobe_items):
+# Function to analyze location image
+def analyze_location(image):
     try:
-       # model = genai.GenerativeModel('gemini-1.5-pro')
-        
+        #model = genai.GenerativeModel('gemini-1.5-pro-vision')
+        prompt = [
+            image,
+            '''Analyze this location and return in this JSON format:
+            {
+              "location_type": "",
+              "environment": "",
+              "weather_indication": "",
+              "dress_code_suggestion": "",
+              "notable_features": [],
+              "recommended_style_elements": []
+            }'''
+        ]
+        #response = clientmodel.generate_content(prompt)
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+        response_text = response.text
+        cleaned_response = response_text
+        if "```json" in response_text:
+            cleaned_response = response_text.split("```json")[1].split("```")[0].strip()
+        elif response_text.startswith("```") and response_text.endswith("```"):
+            cleaned_response = response_text.strip("```").strip()
+        return cleaned_response
+    except Exception as e:
+        st.error(f"Error analyzing location: {e}")
+        return None
+
+# Function to generate outfits
+def generate_outfits(profile, wardrobe_items, location_info=None, time_of_day=None, location_analysis=None):
+    try:
         wardrobe_json = json.dumps(wardrobe_items)
+        
+        # Build context-aware prompt
+        location_context = ""
+        if location_info:
+            location_context = f"""
+            Location Context:
+            - Destination: {location_info.get('destination', '')}
+            - Activity: {location_info.get('activity', '')}
+            - Time of Day: {time_of_day if time_of_day else 'Not specified'}
+            """
+            
+        if location_analysis:
+            location_context += f"""
+            Location Analysis:
+            {location_analysis}
+            """
         
         prompt = f"""
         You're an expert stylist.
-        Use the following profile and available wardrobe items to suggest 3 personalized outfit options:
+        Use the following profile, location context, and available wardrobe items to suggest 3 personalized outfit options:
         
         Profile:
         {profile}
         
+        {location_context}
+        
         Wardrobe:
         {wardrobe_json}
         
-        Generate outfits that only use the items available in the wardrobe.
-        Only use colors from recommended_colors in the profile. 
-        Avoid styles from avoid_styles in the profile.
+        Generate outfits that:
+        1. Only use items available in the wardrobe
+        2. Match the location's environment and dress code
+        3. Are appropriate for the time of day
+        4. Consider the weather and environment
+        5. Only use colors from recommended_colors in the profile
+        6. Avoid styles from avoid_styles in the profile
+        
         Return in JSON format with 3 outfit options.
         The output should have this structure:
         {{
@@ -146,23 +196,23 @@ def generate_outfits(profile, wardrobe_items):
                 ...
               ],
               "occasions": ["casual", "work", etc],
-              "weather": "suitable weather condition"
+              "weather": "suitable weather condition",
+              "time_of_day": "when to wear",
+              "location_appropriateness": "why this outfit suits the location"
             }},
             ...
           ]
         }}
         """
         
-        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt, config=types.GenerateContentConfig(temperature= 0.7))
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt, config=types.GenerateContentConfig(temperature=0.7))
         response_text = response.text
 
         # Clean up and parse the JSON response
         cleaned_response = response_text
         if "```json" in response_text:
-            # If response is wrapped in markdown code block
             cleaned_response = response_text.split("```json")[1].split("```")[0].strip()
         elif response_text.startswith("```") and response_text.endswith("```"):
-            # If response is wrapped in generic code block
             cleaned_response = response_text.strip("```").strip()
             
         return cleaned_response
@@ -410,13 +460,59 @@ elif app_mode == "Generate Outfits":
         elif all(len(items) == 0 for items in st.session_state.wardrobe_items.values()):
             st.warning("Please add items to your wardrobe first.")
         else:
-            if st.button("Generate New Outfits"):
+            # Location and Time Context
+            with st.expander("Set Location and Time Context", expanded=True):
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    destination = st.text_input("Destination/Location", 
+                                              help="Enter the name of your destination (e.g., 'Beach in Bali', 'Paris Museum')")
+                    activity = st.text_input("Planned Activity",
+                                           help="What will you be doing? (e.g., 'Sightseeing', 'Dinner')")
+                    time_of_day = st.selectbox("Time of Day", 
+                                             ["Morning", "Afternoon", "Evening", "Night"],
+                                             help="Select the time of day for your outfit")
+                
+                with col2:
+                    st.write("Upload a photo of the location (optional)")
+                    location_image = st.file_uploader("Location Image", 
+                                                    type=["jpg", "jpeg", "png"],
+                                                    help="Upload a photo of your destination for better context")
+                    
+                    location_analysis = None
+                    if location_image:
+                        image = Image.open(location_image)
+                        st.image(image, caption="Location Image", width=300)
+                        
+                        if st.button("Analyze Location"):
+                            with st.spinner("Analyzing location..."):
+                                location_analysis = analyze_location(image)
+                                if location_analysis:
+                                    st.success("Location analyzed!")
+                                    try:
+                                        st.json(json.loads(location_analysis))
+                                    except Exception:
+                                        st.write(location_analysis)
+
+            # Generate outfits button
+            if st.button("Generate Outfits"):
                 if initialize_gemini():
                     with st.spinner("Generating outfit suggestions..."):
-                        outfits = generate_outfits(st.session_state.profile, st.session_state.wardrobe_items)
+                        location_info = {
+                            "destination": destination,
+                            "activity": activity
+                        } if destination or activity else None
+                        
+                        outfits = generate_outfits(
+                            st.session_state.profile,
+                            st.session_state.wardrobe_items,
+                            location_info=location_info,
+                            time_of_day=time_of_day,
+                            location_analysis=location_analysis
+                        )
+                        
                         if outfits:
                             try:
-                                # Parse the JSON
                                 outfits_data = json.loads(outfits)
                                 st.session_state.recommended_outfits = outfits_data["outfit_options"]
                                 st.success("Generated outfit suggestions!")
@@ -435,8 +531,12 @@ elif app_mode == "Generate Outfits":
                 
                 for outfit in st.session_state.recommended_outfits:
                     with st.expander(f"{outfit['name']} - {outfit['description']}", expanded=True):
+                        # Display context information
+                        st.write(f"**Time of Day:** {outfit.get('time_of_day', 'Any time')}")
                         st.write(f"**Occasions:** {', '.join(outfit['occasions'])}")
                         st.write(f"**Weather:** {outfit['weather']}")
+                        if 'location_appropriateness' in outfit:
+                            st.write(f"**Location Fit:** {outfit['location_appropriateness']}")
                         
                         # Display outfit items
                         cols = st.columns(len(outfit['items']))
@@ -463,7 +563,6 @@ elif app_mode == "Generate Outfits":
                         # Save outfit button
                         if st.button("Save to Favorites", key=f"save_{outfit['option_id']}"):
                             st.session_state.outfit_history.append(outfit)
-                            # Save updated outfit history
                             utils.save_outfits(st.session_state.outfit_history)
                             st.success("Outfit saved to favorites!")
             
