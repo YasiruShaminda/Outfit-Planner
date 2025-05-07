@@ -112,7 +112,7 @@ def analyze_clothing(image):
 # Function to analyze location image
 def analyze_location(image):
     try:
-        model = genai.GenerativeModel('gemini-1.5-pro-vision')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = [
             image,
             '''Analyze this location and return in this JSON format:
