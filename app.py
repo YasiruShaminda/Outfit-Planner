@@ -4,10 +4,10 @@ import json
 import time
 import numpy as np
 from PIL import Image
-import google.generativeai as genai
-#from google import genai
-#from google.genai import models
-#from google.genai import types
+#import google.generativeai as genai
+from google import genai
+from google.genai import models
+from google.genai import types
 from sklearn.neighbors import NearestNeighbors
 from dotenv import load_dotenv
 import uuid
@@ -49,7 +49,8 @@ def get_api_key():
 def initialize_gemini():
     api_key = get_api_key()
     if api_key:
-        genai.configure(api_key=api_key)
+        global client
+        client = genai.Client(api_key=api_key)
         return True
     return False
 
@@ -70,7 +71,7 @@ def embed_text(text):
 # Function to analyze an image
 def analyze_image(image):
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        #model = genai.GenerativeModel('gemini-1.5-pro-vision')
         prompt = [
             image,
             '''Analyze the person's figure and skin tone. Return in this JSON format:
@@ -82,7 +83,7 @@ def analyze_image(image):
               "notes": ""
             }'''
         ]
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
         return response.text
     except Exception as e:
         st.error(f"Error analyzing image: {e}")
@@ -91,7 +92,7 @@ def analyze_image(image):
 # Function to analyze clothing item
 def analyze_clothing(image):
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        #model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = [
             image,
             '''Analyze this clothing item and return in this JSON format:
@@ -103,7 +104,7 @@ def analyze_clothing(image):
               "occasions": []
             }'''
         ]
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
         return response.text
     except Exception as e:
         st.error(f"Error analyzing clothing: {e}")
@@ -112,7 +113,7 @@ def analyze_clothing(image):
 # Function to generate outfits
 def generate_outfits(profile, wardrobe_items):
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+       # model = genai.GenerativeModel('gemini-1.5-pro')
         
         wardrobe_json = json.dumps(wardrobe_items)
         
@@ -152,7 +153,7 @@ def generate_outfits(profile, wardrobe_items):
         }}
         """
         
-        response = model.generate_content(prompt, generation_config={"temperature": 0.7})
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt, config=types.GenerateContentConfig(temperature= 0.7))
         response_text = response.text
 
         # Clean up and parse the JSON response
@@ -210,7 +211,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App title and description
-st.markdown("<h1 class='main-header'>Dress Mind</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>AI Personal Stylist</h1>", unsafe_allow_html=True)
 st.markdown("Upload your clothing items and let AI create personalized outfits for your style and body type.")
 
 # Sidebar
