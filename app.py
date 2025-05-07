@@ -112,7 +112,7 @@ def analyze_clothing(image):
 # Function to analyze location image
 def analyze_location(image):
     try:
-        #model = genai.GenerativeModel('gemini-1.5-pro-vision')
+        model = genai.GenerativeModel('gemini-1.5-pro-vision')
         prompt = [
             image,
             '''Analyze this location and return in this JSON format:
@@ -125,8 +125,8 @@ def analyze_location(image):
               "recommended_style_elements": []
             }'''
         ]
-        #response = clientmodel.generate_content(prompt)
-        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+        response = model.generate_content(prompt)
+        #response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
         response_text = response.text
         cleaned_response = response_text
         if "```json" in response_text:
